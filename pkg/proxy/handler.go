@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -28,6 +29,7 @@ func proxyHandler(cfg *config.Config) func(w http.ResponseWriter, r *http.Reques
 			http.SetCookie(w, &http.Cookie{
 				Name:  clusterCookieName,
 				Value: cluster.Name,
+				Path:  "/",
 			})
 		}
 		host := getHealthyHost(cluster.Hosts)
@@ -50,6 +52,7 @@ func proxyRequest(host *config.Host, w http.ResponseWriter, r *http.Request) err
 	if client == nil {
 		client = &http.Client{
 			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
 				},
@@ -61,37 +64,65 @@ func proxyRequest(host *config.Host, w http.ResponseWriter, r *http.Request) err
 	tgturl := *r.URL
 	tgturl.Scheme = host.Endpoint.Scheme
 	tgturl.Host = host.Endpoint.Host
-	oreqbody, err := io.ReadAll(r.Body)
+	bb, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
 	}
-	oreqbuf := bytes.NewBuffer(oreqbody)
-	req, err := http.NewRequest(r.Method, tgturl.String(), oreqbuf)
+	req, err := http.NewRequest(r.Method, tgturl.String(), bytes.NewReader(bb))
 	if err != nil {
 		return err
 	}
-	req.Header = r.Header
+	copyHeaders(r.Header, req.Header)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	copyHeaders(resp.Header, w.Header())
+	w.WriteHeader(resp.StatusCode)
+	if host.HideRepowarn && r.URL.Path == "/api2/extjs/nodes/localhost/subscription" {
+		return mangleSubscription(resp.Body, w)
+	}
+	if r.URL.Path == "/" {
+		return injectScript(resp.Body, w, localHTTPDir+"portal.js")
+	}
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		return err
+	}
+	return nil
+}
+
+func copyHeaders(src http.Header, dst http.Header) {
+	for k, vv := range src {
+		for _, v := range vv {
+			if k == "Content-Length" ||
+				k == "Transfer-Encoding" ||
+				k == "Accept-Encoding" {
+				continue
+			}
+			dst.Add(k, v)
+		}
+	}
+}
+
+func mangleSubscription(r io.Reader, w io.Writer) error {
+	body, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	if host.HideRepowarn && tgturl.Path == "/api2/extjs/nodes/localhost/subscription" {
-		body = []byte(strings.Replace(string(body), "\"status\":\"notfound\"", "\"status\":\"active\"", 1))
+	if _, err := w.Write([]byte(strings.Replace(string(body), "\"status\":\"notfound\"", "\"status\":\"active\"", 1))); err != nil {
+		return err
 	}
-	for k, vv := range resp.Header {
-		for _, v := range vv {
-			if k == "Content-Length" {
-				continue
-			}
-			w.Header().Add(k, v)
-		}
+	return nil
+}
+
+func injectScript(r io.Reader, w io.Writer, path string) error {
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return err
 	}
-	if _, err := w.Write(body); err != nil {
+	ref := fmt.Sprintf("  <script type=\"text/javascript\" src=\"%s\"></script>\n  </head>", path)
+	if _, err := w.Write([]byte(strings.Replace(string(body), "</head>", ref, 1))); err != nil {
 		return err
 	}
 	return nil

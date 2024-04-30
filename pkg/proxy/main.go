@@ -2,9 +2,11 @@ package proxy
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,9 +19,10 @@ import (
 
 const (
 	clusterCookieName = "PvePortalClusterName"
+	localHTTPDir      = "/pveportal/"
 )
 
-func Run() error {
+func Run(www embed.FS) error {
 	cpath := flag.String("c", "pveportal.yaml", "config path")
 	loglevel := flag.String("l", "INFO", "loglevel")
 	flag.Parse()
@@ -32,6 +35,14 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+
+	staticFS := fs.FS(www)
+	htmlContent, err := fs.Sub(staticFS, "www")
+	if err != nil {
+		return err
+	}
+	fs := http.FileServer(http.FS(htmlContent))
+	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
 
 	handler := proxyHandler(cfg)
 	http.HandleFunc("/", handler)
