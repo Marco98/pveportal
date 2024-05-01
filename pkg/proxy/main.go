@@ -42,6 +42,8 @@ func Run(www embed.FS) error {
 		return err
 	}
 	fs := http.FileServer(http.FS(htmlContent))
+	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), listClusters(cfg.Clusters))
+	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), switchCluster())
 	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
 
 	handler := proxyHandler(cfg)

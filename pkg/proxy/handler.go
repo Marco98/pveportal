@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/Marco98/pveportal/pkg/config"
@@ -21,14 +22,17 @@ func proxyHandler(cfg *config.Config) func(w http.ResponseWriter, r *http.Reques
 		}
 		cname := ""
 		if cl != nil {
-			cname = cl.Value
+			cname, err = url.QueryUnescape(cl.Value)
+			if err != nil {
+				log.WithError(err).Error("failed to unescape cookie")
+			}
 		}
 		cluster := getCluster(cfg, cname)
 		if cluster == nil {
 			cluster = &cfg.Clusters[0]
 			http.SetCookie(w, &http.Cookie{
 				Name:  clusterCookieName,
-				Value: cluster.Name,
+				Value: url.QueryEscape(cluster.Name),
 				Path:  "/",
 			})
 		}
