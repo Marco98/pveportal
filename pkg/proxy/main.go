@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"embed"
 	"errors"
 	"flag"
@@ -14,11 +15,12 @@ import (
 	"time"
 
 	"github.com/Marco98/pveportal/pkg/config"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
 	clusterCookieName = "PvePortalClusterName"
+	sessionCookieName = "PvePortalSession"
 	localHTTPDir      = "/pveportal/"
 )
 
@@ -26,16 +28,15 @@ func Run(www embed.FS) error {
 	cpath := flag.String("c", "pveportal.yaml", "config path")
 	loglevel := flag.String("l", "INFO", "loglevel")
 	flag.Parse()
-	llevel, err := log.ParseLevel(*loglevel)
+	llevel, err := logrus.ParseLevel(*loglevel)
 	if err != nil {
 		return err
 	}
-	log.SetLevel(llevel)
+	logrus.SetLevel(llevel)
 	cfg, err := config.ParseConfigfile(*cpath)
 	if err != nil {
 		return err
 	}
-
 	staticFS := fs.FS(www)
 	htmlContent, err := fs.Sub(staticFS, "www")
 	if err != nil {
@@ -45,26 +46,39 @@ func Run(www embed.FS) error {
 	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), listClusters(cfg.Clusters))
 	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), switchCluster())
 	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
-
-	handler := proxyHandler(cfg)
+	prx := NewProxy(cfg)
+	handler := prx.proxyHandler()
 	http.HandleFunc("/", handler)
-
+	tlscfg, err := prx.parseTLSConfig()
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		Addr:         fmt.Sprintf(":%d", cfg.ListenPort),
+		TLSConfig:    tlscfg,
 	}
 
 	endsig := make(chan os.Signal, 1)
 	signal.Notify(endsig, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.WithError(err).Error("api cannot listen")
+		var err error
+		if srv.TLSConfig != nil {
+			err = srv.ListenAndServeTLS("", "")
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logrus.WithError(err).Error("api cannot listen")
 			endsig <- syscall.SIGTERM
 		}
 	}()
+	cleanctx, cleancancel := context.WithCancel(context.Background())
+	go prx.cleanSessions(cleanctx)
 	<-endsig
-	log.Info("shutting down server")
+	cleancancel()
+	logrus.Info("shutting down server")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer func() {
 		cancel()
@@ -92,4 +106,18 @@ func getHealthyHost(hh []config.Host) *config.Host {
 		}
 	}
 	return &hh[0]
+}
+
+func (p *Proxy) parseTLSConfig() (*tls.Config, error) {
+	if len(p.config.TLSKeyFile) == 0 && len(p.config.TLSCertFile) == 0 {
+		return nil, nil
+	}
+	crt, err := tls.LoadX509KeyPair(p.config.TLSCertFile, p.config.TLSKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{crt},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }

@@ -10,8 +10,8 @@
 
 - [x] hide nag-popup (please [purchase a licence](https://www.proxmox.com/en/proxmox-virtual-environment/pricing) for production)
 - [x] switch clusters in GUI
+- [x] pass-through authentication
 - [ ] host health checks
-- [ ] pass-through authentication
 - [ ] see resources cross-cluster
 
 ## Installation
@@ -27,12 +27,19 @@ WIP
 ### Example
 
 ```yaml
-check_interval: 5
+# server
 listen_port: 8080
+tls_cert_file: server.crt
+tls_key_file: server.key
+# hooks
+hide_repowarn: true
+passthroughauth: true
+# connectivity
+check_interval: 5
+ignore_cert: true
 username: svc_pveportal
 password: insecure
-ignore_cert: true
-hide_repowarn: true
+# clusters
 clusters:
   - name: dc01
     hosts:

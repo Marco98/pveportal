@@ -11,11 +11,15 @@ import (
 	"strings"
 
 	"github.com/Marco98/pveportal/pkg/config"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
-func proxyHandler(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logrus.WithFields(logrus.Fields{
+			"remoteAddr": r.RemoteAddr,
+			"url":        r.URL.String(),
+		})
 		cl, err := r.Cookie(clusterCookieName)
 		if err != nil && !errors.Is(err, http.ErrNoCookie) {
 			log.WithError(err).Error("failed to access cookie")
@@ -27,22 +31,33 @@ func proxyHandler(cfg *config.Config) func(w http.ResponseWriter, r *http.Reques
 				log.WithError(err).Error("failed to unescape cookie")
 			}
 		}
-		cluster := getCluster(cfg, cname)
+		cluster := getCluster(p.config, cname)
 		if cluster == nil {
-			cluster = &cfg.Clusters[0]
+			cluster = &p.config.Clusters[0]
 			http.SetCookie(w, &http.Cookie{
 				Name:  clusterCookieName,
 				Value: url.QueryEscape(cluster.Name),
 				Path:  "/",
 			})
 		}
+		log = log.WithField("cluster", cluster.Name)
+		if err := p.passthroughAuthSession(w, r); err != nil {
+			log.WithError(err).Error("error handling passthrough auth session")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		if p.config.PassthroughAuth && r.URL.Path == "/api2/extjs/access/ticket" {
+			if err := p.multiAuth(log, w, r); err != nil {
+				log.WithError(err).Error("error handling passthrough auth multiauth")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			return
+		}
 		host := getHealthyHost(cluster.Hosts)
-		log.WithFields(log.Fields{
-			"url":     r.URL.String(),
-			"cluster": cluster.Name,
-			"host":    host.Name,
-		}).Debug("accessed backend")
-		if err := proxyRequest(host, w, r); err != nil {
+		log.WithField("host", host.Name).Debug("accessed backend")
+		if err := p.proxyRequest(cluster.Name, host, w, r); err != nil {
 			log.WithError(err).Error("failed to proxy request")
 			if _, err := io.WriteString(w, "failed to proxy request"); err != nil {
 				log.WithError(err).Error("error writing error to response")
@@ -51,19 +66,14 @@ func proxyHandler(cfg *config.Config) func(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func proxyRequest(host *config.Host, w http.ResponseWriter, r *http.Request) error {
-	client := host.Client
-	if client == nil {
-		client = &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
-				},
+func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseWriter, r *http.Request) error {
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
 			},
-		}
-		host.Client = client
-		log.Debug("created new http client")
+		},
 	}
 	tgturl := *r.URL
 	tgturl.Scheme = host.Endpoint.Scheme
@@ -72,17 +82,22 @@ func proxyRequest(host *config.Host, w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(r.Method, tgturl.String(), bytes.NewReader(bb))
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(bb))
 	if err != nil {
 		return err
 	}
-	copyHeaders(r.Header, req.Header)
+	p.copyHeaders(r.Header, req.Header)
+	if p.config.PassthroughAuth {
+		if err := p.addAuthCookie(cluster, r, req.Header); err != nil {
+			return err
+		}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	copyHeaders(resp.Header, w.Header())
+	p.copyHeaders(resp.Header, w.Header())
 	w.WriteHeader(resp.StatusCode)
 	if host.HideRepowarn && r.URL.Path == "/api2/extjs/nodes/localhost/subscription" {
 		return mangleSubscription(resp.Body, w)
@@ -96,12 +111,13 @@ func proxyRequest(host *config.Host, w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
-func copyHeaders(src http.Header, dst http.Header) {
+func (p *Proxy) copyHeaders(src http.Header, dst http.Header) {
 	for k, vv := range src {
 		for _, v := range vv {
 			if k == "Content-Length" ||
 				k == "Transfer-Encoding" ||
-				k == "Accept-Encoding" {
+				k == "Accept-Encoding" ||
+				(p.config.PassthroughAuth && k == "Cookie") {
 				continue
 			}
 			dst.Add(k, v)

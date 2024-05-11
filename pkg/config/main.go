@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -58,10 +59,22 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 			Hosts: hosts,
 		}
 	}
+	sessionTime := time.Hour * 12
+	if len(yaml.SessionTime) > 0 {
+		var err error
+		sessionTime, err = time.ParseDuration(yaml.SessionTime)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse sessiontime: %w", err)
+		}
+	}
 	return &Config{
-		CheckInterval: yaml.CheckInterval,
-		ListenPort:    yaml.ListenPort,
-		Clusters:      clusters,
+		CheckInterval:   yaml.CheckInterval,
+		ListenPort:      yaml.ListenPort,
+		Clusters:        clusters,
+		PassthroughAuth: defaultbool(yaml.PassthroughAuth, false),
+		SessionTime:     sessionTime,
+		TLSCertFile:     yaml.TLSCertFile,
+		TLSKeyFile:      yaml.TLSKeyFile,
 	}, nil
 }
 
