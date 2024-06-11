@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Marco98/pveportal/pkg/config"
+	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 )
 
@@ -46,7 +48,6 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
 		if p.config.PassthroughAuth && r.URL.Path == "/api2/extjs/access/ticket" {
 			if err := p.multiAuth(log, w, r); err != nil {
 				log.WithError(err).Error("error handling passthrough auth multiauth")
@@ -78,6 +79,15 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 	tgturl := *r.URL
 	tgturl.Scheme = host.Endpoint.Scheme
 	tgturl.Host = host.Endpoint.Host
+	if len(r.Header.Get("Sec-WebSocket-Protocol")) != 0 {
+		if tgturl.Scheme == "http" {
+			tgturl.Scheme = "ws"
+		}
+		if tgturl.Scheme == "https" {
+			tgturl.Scheme = "wss"
+		}
+		return p.proxyWebsocket(cluster, host, w, r, tgturl)
+	}
 	bb, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
@@ -117,7 +127,13 @@ func (p *Proxy) copyHeaders(src http.Header, dst http.Header) {
 			if k == "Content-Length" ||
 				k == "Transfer-Encoding" ||
 				k == "Accept-Encoding" ||
-				(p.config.PassthroughAuth && k == "Cookie") {
+				(p.config.PassthroughAuth && k == "Cookie") ||
+				k == "Sec-Websocket-Version" ||
+				k == "Connection" ||
+				k == "Upgrade" ||
+				k == "Sec-Websocket-Extensions" ||
+				k == "Sec-WebSocket-Accept" ||
+				k == "Sec-Websocket-Key" {
 				continue
 			}
 			dst.Add(k, v)
@@ -146,4 +162,78 @@ func injectScript(r io.Reader, w io.Writer, path string) error {
 		return err
 	}
 	return nil
+}
+
+func (p *Proxy) proxyWebsocket(cluster string, host *config.Host, w http.ResponseWriter, r *http.Request, tgturl url.URL) error {
+	dialer := &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 45 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
+		},
+	}
+	bhead := http.Header{}
+	p.copyHeaders(r.Header, bhead)
+	if p.config.PassthroughAuth {
+		if err := p.addAuthCookie(cluster, r, bhead); err != nil {
+			return err
+		}
+	}
+	bcon, resp, err := dialer.Dial(tgturl.String(), bhead)
+	if err != nil {
+		return fmt.Errorf("failed dialing backend: %w", err)
+	}
+	defer bcon.Close()
+	upgrader := &websocket.Upgrader{}
+	fhead := http.Header{}
+	if hdr := resp.Header.Get("Sec-Websocket-Protocol"); hdr != "" {
+		fhead.Set("Sec-Websocket-Protocol", hdr)
+	}
+	if hdr := resp.Header.Get("Set-Cookie"); hdr != "" {
+		fhead.Set("Set-Cookie", hdr)
+	}
+	fcon, err := upgrader.Upgrade(w, r, fhead)
+	if err != nil {
+		return fmt.Errorf("failed upgrading frontend: %w", err)
+	}
+	defer fcon.Close()
+	ferr := make(chan error, 1)
+	berr := make(chan error, 1)
+	go replicateWebsocketConn(fcon, bcon, ferr)
+	go replicateWebsocketConn(bcon, fcon, berr)
+	select {
+	case err = <-ferr:
+	case err = <-berr:
+	}
+	if e, ok := err.(*websocket.CloseError); !ok || e.Code == websocket.CloseAbnormalClosure {
+		return fmt.Errorf("error while proxing ws: %w", err)
+	}
+	return nil
+}
+
+func replicateWebsocketConn(dst, src *websocket.Conn, errc chan error) {
+	for {
+		msgType, msg, err := src.ReadMessage()
+		if err != nil {
+			m := websocket.FormatCloseMessage(websocket.CloseNormalClosure, fmt.Sprintf("%v", err))
+			if e, ok := err.(*websocket.CloseError); ok {
+				if e.Code != websocket.CloseNoStatusReceived {
+					m = nil
+					if e.Code != websocket.CloseAbnormalClosure && e.Code != websocket.CloseTLSHandshake {
+						m = websocket.FormatCloseMessage(e.Code, e.Text)
+					}
+				}
+			}
+			errc <- err
+			if m != nil {
+				_ = dst.WriteMessage(websocket.CloseMessage, m)
+			}
+			break
+		}
+		err = dst.WriteMessage(msgType, msg)
+		if err != nil {
+			errc <- err
+			break
+		}
+	}
 }
