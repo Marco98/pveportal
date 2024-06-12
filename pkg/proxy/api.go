@@ -26,11 +26,12 @@ func listClusters(cc []config.Cluster) func(w http.ResponseWriter, r *http.Reque
 		}
 		clusters := make([]listClustersCluster, 0)
 		for _, v := range cc {
+			cn := v.Name
 			if v.Name == currentCluster {
-				continue
+				cn = fmt.Sprintf("%s*", cn)
 			}
 			clusters = append(clusters, listClustersCluster{
-				Name:      v.Name,
+				Name:      cn,
 				SwitchURL: fmt.Sprintf("%sapi/switchcluster?name=%s", localHTTPDir, url.QueryEscape(v.Name)),
 			})
 		}

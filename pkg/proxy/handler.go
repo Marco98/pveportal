@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -59,8 +60,12 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 		host := getHealthyHost(cluster.Hosts)
 		log.WithField("host", host.Name).Debug("accessed backend")
 		if err := p.proxyRequest(cluster.Name, host, w, r); err != nil {
-			log.WithError(err).Error("failed to proxy request")
-			if _, err := io.WriteString(w, "failed to proxy request"); err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.WithError(err).Debug("failed to proxy request")
+			} else {
+				log.WithError(err).Error("failed to proxy request")
+			}
+			if err := p.getClusterFailSite(w); err != nil {
 				log.WithError(err).Error("error writing error to response")
 			}
 		}

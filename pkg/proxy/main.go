@@ -7,8 +7,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -120,4 +123,34 @@ func (p *Proxy) parseTLSConfig() (*tls.Config, error) {
 		Certificates: []tls.Certificate{crt},
 		MinVersion:   tls.VersionTLS12,
 	}, nil
+}
+
+func (p *Proxy) getClusterFailSite(wr io.Writer) error {
+	tmplRaw := `<!DOCTYPE html>
+	<html>
+	<head>
+		<title>cluster unreachable</title>
+	</head>
+	<body>
+		<p>cluster unreachable</p><br>
+		<p>switch clusters?</p>
+		<li>
+		{{range $c := .}}
+			<ul><a href="{{$c.SwitchURL}}">{{$c.Name}}</a></ul>
+		{{end}}
+		</li>
+	</body>
+	</html>`
+	tmpl, err := template.New("clusterFailSite").Parse(tmplRaw)
+	if err != nil {
+		return err
+	}
+	clusters := make([]listClustersCluster, 0)
+	for _, v := range p.config.Clusters {
+		clusters = append(clusters, listClustersCluster{
+			Name:      v.Name,
+			SwitchURL: fmt.Sprintf("%sapi/switchcluster?name=%s", localHTTPDir, url.QueryEscape(v.Name)),
+		})
+	}
+	return tmpl.Execute(wr, clusters)
 }

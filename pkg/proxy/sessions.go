@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -126,7 +127,7 @@ func (p *Proxy) registerSession(log logrus.FieldLogger, sid uuid.UUID, cluster s
 		return err
 	}
 	if d.Success != 1 {
-		return errors.New("success != 1")
+		return fmt.Errorf("success != 1 in cluster: %s", cluster)
 	}
 	p.sessionsLock.Lock()
 	defer p.sessionsLock.Unlock()
