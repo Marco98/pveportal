@@ -77,18 +77,25 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		tgturl := *r.URL
 		tgturl.Scheme = host.Endpoint.Scheme
 		tgturl.Host = host.Endpoint.Host
+		log = log.WithFields(logrus.Fields{
+			"tgturl":  tgturl.String(),
+			"cluster": v.Name,
+		})
 		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(oreq))
 		if err != nil {
-			return err
+			log.WithError(err).Error("failed multiauth")
+			continue
 		}
 		p.copyHeaders(r.Header, req.Header)
 		resp, err := client.Do(req)
 		if err != nil {
-			return err
+			log.WithError(err).Error("failed multiauth")
+			continue
 		}
 		defer resp.Body.Close()
 		resps[v.Name] = *resp
 	}
+	lastrespok := false
 	var lastresp http.Response
 	var lastrespb []byte
 	rsid, err := r.Cookie(sessionCookieName)
@@ -100,14 +107,20 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		return err
 	}
 	for k, v := range resps {
-		lastresp = v
-		lastrespb, err = io.ReadAll(v.Body)
+		vb, err := io.ReadAll(v.Body)
 		if err != nil {
 			return err
 		}
-		if err := p.registerSession(log, sid, k, lastrespb); err != nil {
-			return err
+		if err := p.registerSession(log, sid, k, vb); err != nil {
+			log.WithError(err).Error("failed multiauth response")
+			continue
 		}
+		lastresp = v
+		lastrespb = vb
+		lastrespok = true
+	}
+	if !lastrespok {
+		return errors.New("failed multiauth on all hosts")
 	}
 	p.copyHeaders(lastresp.Header, w.Header())
 	w.WriteHeader(lastresp.StatusCode)
