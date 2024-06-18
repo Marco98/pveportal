@@ -24,6 +24,7 @@ changelog:
       - "^test:"
 dockers:
   - dockerfile: Containerfile
+    use: buildx
     image_templates:
       - "ghcr.io/marco98/pveportal:{{ .Tag }}"
       - "ghcr.io/marco98/pveportal:latest"
