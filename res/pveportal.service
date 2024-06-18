@@ -1,0 +1,10 @@
+[Unit]
+Description=A reverse-proxy/portal service to quickly access multiple proxmox ve clusters.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pveportal -c /etc/pveportal/pveportal.yaml
+
+[Install]
+WantedBy=multi-user.target

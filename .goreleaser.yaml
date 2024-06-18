@@ -7,7 +7,6 @@ builds:
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
@@ -23,3 +22,38 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+dockers:
+  - dockerfile: Containerfile
+    image_templates:
+      - "ghcr.io/marco98/pveportal:{{ .Tag }}"
+      - "ghcr.io/marco98/pveportal:latest"
+    extra_files:
+      - res/pveportal.yaml
+nfpms:
+  - maintainer: Marco98
+    description: "A reverse-proxy/portal service to quickly access multiple proxmox ve clusters."
+    homepage: https://github.com/Marco98/pveportal
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    contents:
+      - dst: /etc/pveportal
+        type: dir
+        file_info:
+          mode: 0755
+          owner: root
+          group: root
+      - src: res/pveportal.service
+        dst: /lib/systemd/system/pveportal.service
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
+      - src: res/pveportal.yaml
+        dst: /etc/pveportal/pveportal.yaml
+        type: config
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
