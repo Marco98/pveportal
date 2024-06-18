@@ -24,7 +24,7 @@ changelog:
       - "^test:"
 dockers:
   - dockerfile: Containerfile
-    use: buildx
+    skip_push: true # podman-docker output will be misinterpreted
     image_templates:
       - "ghcr.io/marco98/pveportal:{{ .Tag }}"
       - "ghcr.io/marco98/pveportal:latest"
