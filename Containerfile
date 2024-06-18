@@ -1,5 +1,6 @@
 FROM scratch
 
+LABEL org.opencontainers.image.source https://github.com/Marco98/pveportal
 ENTRYPOINT ["/pveportal"]
 CMD ["-c", "/config/pveportal.yaml"]
 
