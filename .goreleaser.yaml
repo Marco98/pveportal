@@ -1,6 +1,4 @@
-before:
-  hooks:
-    - pre-commit run --all-files
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 builds:
   - env:
       - CGO_ENABLED=0
@@ -11,17 +9,30 @@ builds:
       - amd64
       - arm64
 archives:
-  - format: binary
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
 checksum:
   name_template: "checksums.txt"
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
 changelog:
   sort: asc
   filters:
     exclude:
       - "^docs:"
       - "^test:"
+upx:
+  - enabled: true
+    goos: [linux]
+    compress: best
+    lzma: true
 dockers:
   - dockerfile: Containerfile
     skip_push: true # podman-docker output will be misinterpreted
