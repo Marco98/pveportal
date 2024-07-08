@@ -31,6 +31,8 @@ WIP
 listen_port: 8080
 tls_cert_file: server.crt
 tls_key_file: server.key
+server_timeout_read: 5 # Default 600
+server_timeout_write: 10 # Default 600
 # hooks
 hide_repowarn: true
 passthroughauth: true

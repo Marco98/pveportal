@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -93,14 +92,11 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 		}
 		return p.proxyWebsocket(cluster, host, w, r, tgturl)
 	}
-	bb, err := io.ReadAll(r.Body)
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), r.Body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(bb))
-	if err != nil {
-		return err
-	}
+	req.ContentLength = r.ContentLength
 	p.copyHeaders(r.Header, req.Header)
 	if p.config.PassthroughAuth {
 		if err := p.addAuthCookie(cluster, r, req.Header); err != nil {

@@ -57,8 +57,8 @@ func Run(www embed.FS) error {
 		return err
 	}
 	srv := &http.Server{
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  time.Duration(cfg.ServerTimeoutRead) * time.Second,
+		WriteTimeout: time.Duration(cfg.ServerTimeoutWrite) * time.Second,
 		Addr:         fmt.Sprintf(":%d", cfg.ListenPort),
 		TLSConfig:    tlscfg,
 	}

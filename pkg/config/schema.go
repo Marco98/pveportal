@@ -7,13 +7,15 @@ import (
 
 type YamlConfig struct {
 	// direct settings
-	CheckInterval   uint          `yaml:"check_interval"`
-	ListenPort      uint16        `yaml:"listen_port"`
-	TLSCertFile     string        `yaml:"tls_cert_file"`
-	TLSKeyFile      string        `yaml:"tls_key_file"`
-	Clusters        []YamlCluster `yaml:"clusters"`
-	PassthroughAuth *bool         `yaml:"passthroughauth"`
-	SessionTime     string        `yaml:"sessiontime"`
+	CheckInterval      uint          `yaml:"check_interval"`
+	ListenPort         uint16        `yaml:"listen_port"`
+	TLSCertFile        string        `yaml:"tls_cert_file"`
+	TLSKeyFile         string        `yaml:"tls_key_file"`
+	ServerTimeoutWrite *int          `yaml:"server_timeout_write"`
+	ServerTimeoutRead  *int          `yaml:"server_timeout_read"`
+	Clusters           []YamlCluster `yaml:"clusters"`
+	PassthroughAuth    *bool         `yaml:"passthroughauth"`
+	SessionTime        string        `yaml:"sessiontime"`
 	// inheritable
 	IgnoreCert   *bool  `yaml:"ignore_cert"`
 	HideRepowarn *bool  `yaml:"hide_repowarn"`
@@ -44,13 +46,15 @@ type YamlHost struct {
 }
 
 type Config struct {
-	CheckInterval   uint
-	ListenPort      uint16
-	PassthroughAuth bool
-	SessionTime     time.Duration
-	TLSCertFile     string
-	TLSKeyFile      string
-	Clusters        []Cluster
+	CheckInterval      uint
+	ListenPort         uint16
+	PassthroughAuth    bool
+	SessionTime        time.Duration
+	TLSCertFile        string
+	TLSKeyFile         string
+	Clusters           []Cluster
+	ServerTimeoutWrite int
+	ServerTimeoutRead  int
 }
 
 type Cluster struct {
