@@ -35,7 +35,6 @@ upx:
     lzma: true
 dockers:
   - dockerfile: Containerfile
-    skip_push: true # podman-docker output will be misinterpreted
     image_templates:
       - "ghcr.io/marco98/pveportal:{{ .Tag }}"
       - "ghcr.io/marco98/pveportal:latest"
