@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -18,16 +19,48 @@ import (
 )
 
 type Proxy struct {
-	config       *config.Config
-	sessions     map[uuid.UUID]map[string]http.Cookie
-	sessionsLock *sync.RWMutex
+	config        *config.Config
+	sessions      map[uuid.UUID]map[string]http.Cookie
+	sessionsLock  *sync.RWMutex
+	httpClient    *http.Client
+	sslKeyLogFile io.WriteCloser
 }
 
-func NewProxy(config *config.Config) *Proxy {
-	return &Proxy{
+func NewProxy(config *config.Config) (*Proxy, error) {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: config.TLSIgnoreCert, //nolint:gosec,G402
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	p := &Proxy{
 		sessions:     make(map[uuid.UUID]map[string]http.Cookie),
 		sessionsLock: &sync.RWMutex{},
 		config:       config,
+		httpClient: &http.Client{
+			Transport: transport,
+		},
+	}
+	path := os.Getenv("SSLKEYLOGFILE")
+	if len(path) != 0 {
+		var err error
+		p.sslKeyLogFile, err = os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+		if err != nil {
+			return nil, fmt.Errorf("could not open SSLKEYLOGFILE: %w", err)
+		}
+		transport.TLSClientConfig.KeyLogWriter = p.sslKeyLogFile
+	}
+	return p, nil
+}
+
+func (p *Proxy) close() {
+	if p.sslKeyLogFile != nil {
+		p.sslKeyLogFile.Close()
 	}
 }
 
@@ -66,14 +99,6 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 	resps := make(map[string]http.Response)
 	for _, v := range p.config.Clusters {
 		host := getHealthyHost(v.Hosts)
-		client := &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
-				},
-			},
-		}
 		tgturl := *r.URL
 		tgturl.Scheme = host.Endpoint.Scheme
 		tgturl.Host = host.Endpoint.Host
@@ -87,7 +112,7 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 			continue
 		}
 		p.copyHeaders(r.Header, req.Header)
-		resp, err := client.Do(req)
+		resp, err := p.httpClient.Do(req)
 		if err != nil {
 			log.WithError(err).Error("failed multiauth")
 			continue

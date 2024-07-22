@@ -45,17 +45,20 @@ func Run(www embed.FS) error {
 	if err != nil {
 		return err
 	}
-	fs := http.FileServer(http.FS(htmlContent))
-	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), listClusters(cfg.Clusters))
-	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), switchCluster())
-	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
-	prx := NewProxy(cfg)
-	handler := prx.proxyHandler()
-	http.HandleFunc("/", handler)
+	prx, err := NewProxy(cfg)
+	if err != nil {
+		return err
+	}
+	defer prx.close()
 	tlscfg, err := prx.parseTLSConfig()
 	if err != nil {
 		return err
 	}
+	fs := http.FileServer(http.FS(htmlContent))
+	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), listClusters(cfg.Clusters))
+	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), switchCluster())
+	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
+	http.HandleFunc("/", prx.proxyHandler())
 	srv := &http.Server{
 		ReadTimeout:  time.Duration(cfg.ServerTimeoutRead) * time.Second,
 		WriteTimeout: time.Duration(cfg.ServerTimeoutWrite) * time.Second,
@@ -122,6 +125,7 @@ func (p *Proxy) parseTLSConfig() (*tls.Config, error) {
 	return &tls.Config{
 		Certificates: []tls.Certificate{crt},
 		MinVersion:   tls.VersionTLS12,
+		KeyLogWriter: p.sslKeyLogFile,
 	}, nil
 }
 

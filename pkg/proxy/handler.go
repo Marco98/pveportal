@@ -72,14 +72,6 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseWriter, r *http.Request) error {
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
-			},
-		},
-	}
 	tgturl := *r.URL
 	tgturl.Scheme = host.Endpoint.Scheme
 	tgturl.Host = host.Endpoint.Host
@@ -103,7 +95,7 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 			return err
 		}
 	}
-	resp, err := client.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
 	}

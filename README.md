@@ -31,6 +31,7 @@ WIP
 listen_port: 8080
 tls_cert_file: server.crt
 tls_key_file: server.key
+tls_ignore_cert: true
 server_timeout_read: 5 # Default 600
 server_timeout_write: 10 # Default 600
 # hooks
@@ -38,7 +39,6 @@ hide_repowarn: true
 passthroughauth: true
 # connectivity
 check_interval: 5
-ignore_cert: true
 username: svc_pveportal
 password: insecure
 # clusters

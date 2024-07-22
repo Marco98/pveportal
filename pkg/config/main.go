@@ -48,7 +48,6 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 				Name:         hv.Name,
 				Endpoint:     ep,
 				Online:       false,
-				IgnoreCert:   defaultbool(lastbool(yaml.IgnoreCert, cv.IgnoreCert, hv.IgnoreCert), false),
 				HideRepowarn: defaultbool(lastbool(yaml.HideRepowarn, cv.HideRepowarn, hv.HideRepowarn), false),
 				Username:     user,
 				Password:     pass,
@@ -75,6 +74,7 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 		SessionTime:        sessionTime,
 		TLSCertFile:        yaml.TLSCertFile,
 		TLSKeyFile:         yaml.TLSKeyFile,
+		TLSIgnoreCert:      defaultbool(yaml.TLSIgnoreCert, false),
 		ServerTimeoutWrite: defaultint(yaml.ServerTimeoutWrite, 600),
 		ServerTimeoutRead:  defaultint(yaml.ServerTimeoutRead, 600),
 	}, nil

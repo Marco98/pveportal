@@ -2,6 +2,7 @@
 listen_port: 80
 # tls_cert_file: server.crt
 # tls_key_file: server.key
+tls_ignore_cert: true
 
 # hooks
 hide_repowarn: true
@@ -9,7 +10,6 @@ passthroughauth: true
 
 # connectivity
 check_interval: 5
-ignore_cert: true
 username: dummy
 password: dummy
 
