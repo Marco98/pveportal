@@ -32,11 +32,13 @@ func NewProxy(config *config.Config) (*Proxy, error) {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: config.TLSIgnoreCert, //nolint:gosec,G402
 		},
-		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		// disable HTTP/2 as not supported by PVE
+		TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		ForceAttemptHTTP2: false,
 	}
 	p := &Proxy{
 		sessions:     make(map[uuid.UUID]map[string]http.Cookie),

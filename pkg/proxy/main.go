@@ -64,6 +64,8 @@ func Run(www embed.FS) error {
 		WriteTimeout: time.Duration(cfg.ServerTimeoutWrite) * time.Second,
 		Addr:         fmt.Sprintf(":%d", cfg.ListenPort),
 		TLSConfig:    tlscfg,
+		// disable HTTP/2 as not supported by PVE
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
 
 	endsig := make(chan os.Signal, 1)
