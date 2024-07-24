@@ -91,7 +91,7 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 	req.ContentLength = r.ContentLength
 	p.copyHeaders(r.Header, req.Header)
 	if p.config.PassthroughAuth {
-		if err := p.addAuthCookie(cluster, r, req.Header); err != nil {
+		if err := p.mangleCookies(cluster, r, req.Header); err != nil {
 			return err
 		}
 	}
@@ -120,7 +120,6 @@ func (p *Proxy) copyHeaders(src http.Header, dst http.Header) {
 			if k == "Content-Length" ||
 				k == "Transfer-Encoding" ||
 				k == "Accept-Encoding" ||
-				(p.config.PassthroughAuth && k == "Cookie") ||
 				k == "Sec-Websocket-Version" ||
 				k == "Connection" ||
 				k == "Upgrade" ||
@@ -168,7 +167,7 @@ func (p *Proxy) proxyWebsocket(cluster string, host *config.Host, w http.Respons
 	bhead := http.Header{}
 	p.copyHeaders(r.Header, bhead)
 	if p.config.PassthroughAuth {
-		if err := p.addAuthCookie(cluster, r, bhead); err != nil {
+		if err := p.mangleCookies(cluster, r, bhead); err != nil {
 			return err
 		}
 	}

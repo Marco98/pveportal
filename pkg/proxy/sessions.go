@@ -187,7 +187,15 @@ func (p *Proxy) registerSession(log logrus.FieldLogger, sid uuid.UUID, cluster s
 	return nil
 }
 
-func (p *Proxy) addAuthCookie(cluster string, r *http.Request, h http.Header) error {
+func (p *Proxy) mangleCookies(cluster string, r *http.Request, h http.Header) error {
+	h.Del("Cookie")
+	for _, c := range r.Cookies() {
+		if c.Name != "PVEAuthCookie" &&
+			c.Name != clusterCookieName &&
+			c.Name != sessionCookieName {
+			h.Add("Cookie", c.String())
+		}
+	}
 	rsid, err := r.Cookie(sessionCookieName)
 	if errors.Is(err, http.ErrNoCookie) {
 		return nil
