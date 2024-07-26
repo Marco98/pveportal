@@ -53,6 +53,9 @@ nfpms:
     formats:
       - deb
       - rpm
+    scripts:
+      postinstall: "res/postinstall.sh"
+      postremove: "res/postremove.sh"
     contents:
       - dst: /etc/pveportal
         type: dir
@@ -68,7 +71,7 @@ nfpms:
           group: root
       - src: res/pveportal.yaml
         dst: /etc/pveportal/pveportal.yaml
-        type: config
+        type: "config|noreplace"
         file_info:
           mode: 0644
           owner: root
