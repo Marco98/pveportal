@@ -5,7 +5,7 @@ UNITNAME=pveportal.service
 remove() {
 	echo "Running normal postremove:"
 	echo "  Stop systemd service unit"
-	systemctl stop $UNITNAME ||:
+	systemctl stop $UNITNAME 2>/dev/null ||:
 	echo "  Reload systemd service unit file"
 	systemctl daemon-reload ||:
 }

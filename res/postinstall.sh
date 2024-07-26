@@ -22,7 +22,8 @@ upgrade() {
 	systemctl daemon-reload ||:
 	echo "  Start/Restart systemd service unit"
 	systemctl try-restart $UNITNAME ||:
-	systemctl is-enabled $UNITNAME && systemctl start $UNITNAME ||:
+	systemctl is-enabled $UNITNAME >/dev/null && \
+		systemctl start $UNITNAME ||:
 }
 
 action="$1"
