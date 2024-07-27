@@ -41,7 +41,8 @@ upx:
 dockers:
   - dockerfile: Containerfile
     image_templates:
-      - "ghcr.io/marco98/pveportal:{{ .Tag }}"
+      - "ghcr.io/marco98/pveportal:{{ .Major }}"
+      - "ghcr.io/marco98/pveportal:{{ .Major }}.{{ .Minor }}"
       - "ghcr.io/marco98/pveportal:latest"
     extra_files:
       - res/pveportal.yaml
