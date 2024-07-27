@@ -43,6 +43,7 @@ dockers:
     image_templates:
       - "ghcr.io/marco98/pveportal:{{ .Major }}"
       - "ghcr.io/marco98/pveportal:{{ .Major }}.{{ .Minor }}"
+      - "ghcr.io/marco98/pveportal:{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
       - "ghcr.io/marco98/pveportal:latest"
     extra_files:
       - res/pveportal.yaml
