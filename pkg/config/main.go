@@ -66,6 +66,12 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 			return nil, fmt.Errorf("could not parse sessiontime: %w", err)
 		}
 	}
+	if yaml.ListenPort == 0 {
+		yaml.ListenPort = 80
+		if len(yaml.TLSCertFile) > 0 && len(yaml.TLSKeyFile) > 0 {
+			yaml.ListenPort = 443
+		}
+	}
 	return &Config{
 		CheckInterval:      yaml.CheckInterval,
 		ListenPort:         yaml.ListenPort,

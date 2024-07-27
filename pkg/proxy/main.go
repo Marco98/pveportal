@@ -117,7 +117,7 @@ func getHealthyHost(hh []config.Host) *config.Host {
 }
 
 func (p *Proxy) parseTLSConfig() (*tls.Config, error) {
-	if len(p.config.TLSKeyFile) == 0 && len(p.config.TLSCertFile) == 0 {
+	if len(p.config.TLSKeyFile) == 0 || len(p.config.TLSCertFile) == 0 {
 		return nil, nil
 	}
 	crt, err := tls.LoadX509KeyPair(p.config.TLSCertFile, p.config.TLSKeyFile)
