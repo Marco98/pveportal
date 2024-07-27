@@ -64,7 +64,6 @@ type Cluster struct {
 type Host struct {
 	Name         string
 	Endpoint     *url.URL
-	IgnoreCert   bool
 	HideRepowarn bool
 	Username     string
 	Password     string

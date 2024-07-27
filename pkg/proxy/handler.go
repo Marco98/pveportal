@@ -82,7 +82,7 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 		if tgturl.Scheme == "https" {
 			tgturl.Scheme = "wss"
 		}
-		return p.proxyWebsocket(cluster, host, w, r, tgturl)
+		return p.proxyWebsocket(cluster, w, r, tgturl)
 	}
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), r.Body)
 	if err != nil {
@@ -156,12 +156,12 @@ func injectScript(r io.Reader, w io.Writer, path string) error {
 	return nil
 }
 
-func (p *Proxy) proxyWebsocket(cluster string, host *config.Host, w http.ResponseWriter, r *http.Request, tgturl url.URL) error {
+func (p *Proxy) proxyWebsocket(cluster string, w http.ResponseWriter, r *http.Request, tgturl url.URL) error {
 	dialer := &websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
 		HandshakeTimeout: 45 * time.Second,
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: host.IgnoreCert, //nolint:gosec,G402
+			InsecureSkipVerify: p.config.TLSIgnoreCert, //nolint:gosec,G402
 		},
 	}
 	bhead := http.Header{}
