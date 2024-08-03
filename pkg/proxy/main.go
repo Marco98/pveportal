@@ -27,6 +27,8 @@ const (
 	localHTTPDir      = "/pveportal/"
 )
 
+var errProxyWs = errors.New("error while proxing ws")
+
 func Run(www embed.FS) error {
 	cpath := flag.String("c", "pveportal.yaml", "config path")
 	loglevel := flag.String("l", "INFO", "loglevel")

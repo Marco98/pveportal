@@ -64,8 +64,11 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.WithError(err).Error("failed to proxy request")
 			}
-			if err := p.getClusterFailSite(w); err != nil {
-				log.WithError(err).Error("error writing error to response")
+			// prevent writing to hijacked connection
+			if !errors.Is(err, errProxyWs) {
+				if err := p.getClusterFailSite(w); err != nil {
+					log.WithError(err).Error("error writing error to response")
+				}
 			}
 		}
 	}
@@ -198,7 +201,7 @@ func (p *Proxy) proxyWebsocket(cluster string, w http.ResponseWriter, r *http.Re
 	case err = <-berr:
 	}
 	if e, ok := err.(*websocket.CloseError); !ok || e.Code == websocket.CloseAbnormalClosure {
-		return fmt.Errorf("error while proxing ws: %w", err)
+		return errors.Join(errProxyWs, err)
 	}
 	return nil
 }
