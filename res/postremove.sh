@@ -2,6 +2,8 @@
 
 UNITNAME=pveportal.service
 
+command -V systemctl >/dev/null 2>&1 || exit 0
+
 remove() {
 	echo "Running normal postremove:"
 	echo "  Stop systemd service unit"

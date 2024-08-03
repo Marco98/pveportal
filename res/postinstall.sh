@@ -2,6 +2,8 @@
 
 UNITNAME=pveportal.service
 
+command -V systemctl >/dev/null 2>&1 || exit 0
+
 cleanInstall() {
 	echo "Runinng clean postinstall:"
 	echo "  Reload systemd service unit file"
