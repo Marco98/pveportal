@@ -94,7 +94,7 @@ func (p *Proxy) proxyRequest(cluster string, host *config.Host, w http.ResponseW
 	req.ContentLength = r.ContentLength
 	p.copyHeaders(r.Header, req.Header)
 	if p.config.PassthroughAuth {
-		if err := p.mangleCookies(cluster, r, req.Header); err != nil {
+		if err := p.mangleCookies(cluster, r, req); err != nil {
 			return err
 		}
 	}
@@ -167,14 +167,16 @@ func (p *Proxy) proxyWebsocket(cluster string, w http.ResponseWriter, r *http.Re
 			InsecureSkipVerify: p.config.TLSIgnoreCert, //nolint:gosec,G402
 		},
 	}
-	bhead := http.Header{}
-	p.copyHeaders(r.Header, bhead)
+	nreq := &http.Request{
+		Header: http.Header{},
+	}
+	p.copyHeaders(r.Header, nreq.Header)
 	if p.config.PassthroughAuth {
-		if err := p.mangleCookies(cluster, r, bhead); err != nil {
+		if err := p.mangleCookies(cluster, r, nreq); err != nil {
 			return err
 		}
 	}
-	bcon, resp, err := dialer.Dial(tgturl.String(), bhead)
+	bcon, resp, err := dialer.Dial(tgturl.String(), nreq.Header)
 	if err != nil {
 		return fmt.Errorf("failed dialing backend: %w", err)
 	}
