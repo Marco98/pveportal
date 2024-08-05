@@ -19,7 +19,7 @@ function createPvePortalClusters() {
   let clusters = document.createElement("div");
   clusters.setAttribute("id", "pveportal-clusters");
   clusters.style.position = "absolute";
-  clusters.style.zIndex = 99;
+  clusters.style.zIndex = 10;
   clusters.style.top = "0px";
   clusters.style.left = "0px";
   for (var i = 0; i < xhr.response.clusters.length; i++) {
@@ -66,6 +66,10 @@ function createPvePortalClusters() {
     </div></a>`;
   }
   document.body.appendChild(clusters);
+  document.getElementById("pveStatusPanel-1040").style.zIndex = 11;
+  document.getElementById("pveStatusPanel-1040-splitter").style.zIndex = 11;
+  document.getElementById("container-1037-splitter").style.zIndex = 11;
+  document.getElementById("content").style.zIndex = 11;
   updatePvePortalClustersLoc();
   let obs = new MutationObserver(updatePvePortalClustersLoc);
   obs.observe(
