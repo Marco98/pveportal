@@ -98,31 +98,7 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 	if err != nil {
 		return err
 	}
-	resps := make(map[string]http.Response)
-	for _, v := range p.config.Clusters {
-		host := getHealthyHost(v.Hosts)
-		tgturl := *r.URL
-		tgturl.Scheme = host.Endpoint.Scheme
-		tgturl.Host = host.Endpoint.Host
-		log = log.WithFields(logrus.Fields{
-			"tgturl":  tgturl.String(),
-			"cluster": v.Name,
-		})
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(oreq))
-		if err != nil {
-			log.WithError(err).Error("failed multiauth")
-			continue
-		}
-		p.copyHeaders(r.Header, req.Header)
-		resp, err := p.httpClient.Do(req)
-		if err != nil {
-			log.WithError(err).Error("failed multiauth")
-			continue
-		}
-		defer resp.Body.Close()
-		resps[v.Name] = *resp
-	}
-	lastrespok := false
+	atLeastOneOK := false
 	var lastresp http.Response
 	var lastrespb []byte
 	rsid, err := r.Cookie(sessionCookieName)
@@ -134,27 +110,50 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		return err
 	}
 	errcnt := 0
-	for k, v := range resps {
-		vb, err := io.ReadAll(v.Body)
-		if err != nil {
-			return err
+	for _, v := range p.config.Clusters {
+		if p.config.PassthroughAuthMaxfail > 0 && errcnt >= p.config.PassthroughAuthMaxfail {
+			return errors.New("passthrough error limit reached")
 		}
-		if err := p.registerSession(log, sid, k, vb); err != nil {
+		host := getHealthyHost(v.Hosts)
+		tgturl := *r.URL
+		tgturl.Scheme = host.Endpoint.Scheme
+		tgturl.Host = host.Endpoint.Host
+		log = log.WithFields(logrus.Fields{
+			"tgturl":  tgturl.String(),
+			"cluster": v.Name,
+			"errcnt":  errcnt,
+			"errmax":  p.config.PassthroughAuthMaxfail,
+		})
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(oreq))
+		if err != nil {
+			log.WithError(err).Error("failed multiauth connection prep")
 			errcnt++
-			log.WithFields(logrus.Fields{
-				"errcnt": errcnt,
-				"errmax": p.config.PassthroughAuthMaxfail,
-			}).WithError(err).Error("failed multiauth response")
-			if p.config.PassthroughAuthMaxfail > 0 && errcnt >= p.config.PassthroughAuthMaxfail {
-				break
-			}
 			continue
 		}
-		lastresp = v
+		p.copyHeaders(r.Header, req.Header)
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			log.WithError(err).Error("failed multiauth connection open")
+			errcnt++
+			continue
+		}
+		defer resp.Body.Close()
+		vb, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.WithError(err).Error("failed multiauth connection read")
+			errcnt++
+			continue
+		}
+		if err := p.registerSession(log, sid, v.Name, vb); err != nil {
+			log.WithError(err).Error("failed multiauth response registration")
+			errcnt++
+			continue
+		}
+		lastresp = *resp
 		lastrespb = vb
-		lastrespok = true
+		atLeastOneOK = true
 	}
-	if !lastrespok {
+	if !atLeastOneOK {
 		return errors.New("failed multiauth on all hosts")
 	}
 	p.copyHeaders(lastresp.Header, w.Header())
