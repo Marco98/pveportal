@@ -37,6 +37,7 @@ server_timeout_write: 10 # Default 600
 # hooks
 hide_repowarn: true
 passthroughauth: true
+passthroughauth_maxfail: 1 # passthroughauth will stop after 1 failure (0 = infinite)
 # connectivity
 check_interval: 5
 username: svc_pveportal

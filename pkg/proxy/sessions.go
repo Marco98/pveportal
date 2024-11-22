@@ -133,13 +133,21 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 	if err != nil {
 		return err
 	}
+	errcnt := 0
 	for k, v := range resps {
 		vb, err := io.ReadAll(v.Body)
 		if err != nil {
 			return err
 		}
 		if err := p.registerSession(log, sid, k, vb); err != nil {
-			log.WithError(err).Error("failed multiauth response")
+			errcnt++
+			log.WithFields(logrus.Fields{
+				"errcnt": errcnt,
+				"errmax": p.config.PassthroughAuthMaxfail,
+			}).WithError(err).Error("failed multiauth response")
+			if p.config.PassthroughAuthMaxfail > 0 && errcnt >= p.config.PassthroughAuthMaxfail {
+				break
+			}
 			continue
 		}
 		lastresp = v

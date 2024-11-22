@@ -73,16 +73,17 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 		}
 	}
 	return &Config{
-		CheckInterval:      yaml.CheckInterval,
-		ListenPort:         yaml.ListenPort,
-		Clusters:           clusters,
-		PassthroughAuth:    defaultbool(yaml.PassthroughAuth, false),
-		SessionTime:        sessionTime,
-		TLSCertFile:        yaml.TLSCertFile,
-		TLSKeyFile:         yaml.TLSKeyFile,
-		TLSIgnoreCert:      defaultbool(yaml.TLSIgnoreCert, false),
-		ServerTimeoutWrite: defaultint(yaml.ServerTimeoutWrite, 600),
-		ServerTimeoutRead:  defaultint(yaml.ServerTimeoutRead, 600),
+		CheckInterval:          yaml.CheckInterval,
+		ListenPort:             yaml.ListenPort,
+		Clusters:               clusters,
+		PassthroughAuth:        defaultbool(yaml.PassthroughAuth, false),
+		PassthroughAuthMaxfail: defaultint(yaml.PassthroughAuthMaxfail, 0),
+		SessionTime:            sessionTime,
+		TLSCertFile:            yaml.TLSCertFile,
+		TLSKeyFile:             yaml.TLSKeyFile,
+		TLSIgnoreCert:          defaultbool(yaml.TLSIgnoreCert, false),
+		ServerTimeoutWrite:     defaultint(yaml.ServerTimeoutWrite, 600),
+		ServerTimeoutRead:      defaultint(yaml.ServerTimeoutRead, 600),
 	}, nil
 }
 

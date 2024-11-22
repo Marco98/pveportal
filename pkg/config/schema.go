@@ -7,16 +7,17 @@ import (
 
 type YamlConfig struct {
 	// direct settings
-	CheckInterval      uint          `yaml:"check_interval"`
-	ListenPort         uint16        `yaml:"listen_port"`
-	TLSCertFile        string        `yaml:"tls_cert_file"`
-	TLSKeyFile         string        `yaml:"tls_key_file"`
-	TLSIgnoreCert      *bool         `yaml:"tls_ignore_cert"`
-	ServerTimeoutWrite *int          `yaml:"server_timeout_write"`
-	ServerTimeoutRead  *int          `yaml:"server_timeout_read"`
-	Clusters           []YamlCluster `yaml:"clusters"`
-	PassthroughAuth    *bool         `yaml:"passthroughauth"`
-	SessionTime        string        `yaml:"sessiontime"`
+	CheckInterval          uint          `yaml:"check_interval"`
+	ListenPort             uint16        `yaml:"listen_port"`
+	TLSCertFile            string        `yaml:"tls_cert_file"`
+	TLSKeyFile             string        `yaml:"tls_key_file"`
+	TLSIgnoreCert          *bool         `yaml:"tls_ignore_cert"`
+	ServerTimeoutWrite     *int          `yaml:"server_timeout_write"`
+	ServerTimeoutRead      *int          `yaml:"server_timeout_read"`
+	Clusters               []YamlCluster `yaml:"clusters"`
+	PassthroughAuth        *bool         `yaml:"passthroughauth"`
+	PassthroughAuthMaxfail *int          `yaml:"passthroughauth_maxfail"`
+	SessionTime            string        `yaml:"sessiontime"`
 	// inheritable
 	HideRepowarn *bool  `yaml:"hide_repowarn"`
 	Username     string `yaml:"username"`
@@ -44,16 +45,17 @@ type YamlHost struct {
 }
 
 type Config struct {
-	CheckInterval      uint
-	ListenPort         uint16
-	PassthroughAuth    bool
-	SessionTime        time.Duration
-	TLSCertFile        string
-	TLSKeyFile         string
-	TLSIgnoreCert      bool
-	Clusters           []Cluster
-	ServerTimeoutWrite int
-	ServerTimeoutRead  int
+	CheckInterval          uint
+	ListenPort             uint16
+	PassthroughAuth        bool
+	PassthroughAuthMaxfail int
+	SessionTime            time.Duration
+	TLSCertFile            string
+	TLSKeyFile             string
+	TLSIgnoreCert          bool
+	Clusters               []Cluster
+	ServerTimeoutWrite     int
+	ServerTimeoutRead      int
 }
 
 type Cluster struct {
