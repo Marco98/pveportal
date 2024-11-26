@@ -39,7 +39,7 @@ hide_repowarn: true
 passthroughauth: true
 passthroughauth_maxfail: 1 # passthroughauth will stop after 1 failure (0 = infinite)
 # connectivity
-check_interval: 5
+check_interval: 60 # in seconds (< 0 = disable)
 username: svc_pveportal
 password: insecure
 # clusters

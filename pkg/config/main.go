@@ -47,7 +47,7 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 			hosts[hi] = Host{
 				Name:         hv.Name,
 				Endpoint:     ep,
-				Online:       false,
+				Online:       true,
 				HideRepowarn: defaultbool(lastbool(yaml.HideRepowarn, cv.HideRepowarn, hv.HideRepowarn), false),
 				Username:     user,
 				Password:     pass,
@@ -73,7 +73,7 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 		}
 	}
 	return &Config{
-		CheckInterval:          yaml.CheckInterval,
+		CheckInterval:          defaultint(yaml.CheckInterval, 60),
 		ListenPort:             yaml.ListenPort,
 		Clusters:               clusters,
 		PassthroughAuth:        defaultbool(yaml.PassthroughAuth, false),

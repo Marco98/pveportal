@@ -7,7 +7,7 @@ import (
 
 type YamlConfig struct {
 	// direct settings
-	CheckInterval          uint          `yaml:"check_interval"`
+	CheckInterval          *int          `yaml:"check_interval"`
 	ListenPort             uint16        `yaml:"listen_port"`
 	TLSCertFile            string        `yaml:"tls_cert_file"`
 	TLSKeyFile             string        `yaml:"tls_key_file"`
@@ -45,7 +45,7 @@ type YamlHost struct {
 }
 
 type Config struct {
-	CheckInterval          uint
+	CheckInterval          int
 	ListenPort             uint16
 	PassthroughAuth        bool
 	PassthroughAuthMaxfail int

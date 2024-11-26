@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -86,6 +87,10 @@ func Run(www embed.FS) error {
 	}()
 	cleanctx, cleancancel := context.WithCancel(context.Background())
 	go prx.cleanSessions(cleanctx)
+	if prx.config.CheckInterval >= 0 {
+		logrus.WithField("interval", prx.config.CheckInterval).Debug("healthcheck enabled")
+		go prx.hostHealthchecks(cleanctx)
+	}
 	<-endsig
 	cleancancel()
 	logrus.Info("shutting down server")
@@ -161,4 +166,37 @@ func (p *Proxy) getClusterFailSite(wr io.Writer) error {
 		})
 	}
 	return tmpl.Execute(wr, clusters)
+}
+
+func (p *Proxy) hostHealthchecks(ctx context.Context) {
+	for {
+		time.Sleep(time.Duration(p.config.CheckInterval) * time.Second)
+		logrus.Debug("healthcheck interval started")
+		if ctx.Err() != nil {
+			return
+		}
+		for clx, cl := range p.config.Clusters {
+			for chx, ch := range cl.Hosts {
+				log := logrus.WithFields(logrus.Fields{
+					"cluster": cl.Name,
+					"host":    ch.Name,
+				})
+				log.WithField("addr", ch.Endpoint.Host).Debug("healthcheck dialing")
+				c, err := net.Dial("tcp", ch.Endpoint.Host)
+				if err != nil {
+					if ch.Online {
+						p.config.Clusters[clx].Hosts[chx].Online = false
+						log.WithError(err).Warn("host state: UP => DOWN")
+					}
+					continue
+				}
+				c.Close()
+				if !ch.Online {
+					p.config.Clusters[clx].Hosts[chx].Online = true
+					log.Warn("host state: DOWN => UP")
+				}
+			}
+		}
+		logrus.Debug("healthcheck interval ended")
+	}
 }
