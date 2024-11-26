@@ -2,9 +2,10 @@ package main
 
 import (
 	"embed"
+	"log/slog"
+	"os"
 
 	"github.com/Marco98/pveportal/pkg/proxy"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -17,12 +18,14 @@ var (
 var www embed.FS
 
 func main() {
-	logrus.WithFields(logrus.Fields{
-		"version": version,
-		"commit":  commit,
-		"date":    date,
-	}).Info("starting pveportal")
+	slog.Info(
+		"starting pveportal",
+		"version", version,
+		"commit", commit,
+		"date", date,
+	)
 	if err := proxy.Run(www); err != nil {
-		logrus.WithError(err).Fatal("fatal exception")
+		slog.Error("fatal exception", "error", err)
+		os.Exit(1)
 	}
 }

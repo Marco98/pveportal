@@ -6,31 +6,35 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Marco98/pveportal/pkg/config"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/sirupsen/logrus"
 )
 
 func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log := logrus.WithFields(logrus.Fields{
-			"remoteAddr": r.RemoteAddr,
-			"url":        r.URL.String(),
-		})
+		ctx := r.Context()
+		log := slog.With(slog.Group(
+			"req",
+			"id", uuid.NewString(),
+			"src", r.RemoteAddr,
+			"url", r.URL.String(),
+		))
 		cl, err := r.Cookie(clusterCookieName)
 		if err != nil && !errors.Is(err, http.ErrNoCookie) {
-			log.WithError(err).Error("failed to access cookie")
+			log.ErrorContext(ctx, "failed to access cookie", "error", err)
 		}
 		cname := ""
 		if cl != nil {
 			cname, err = url.QueryUnescape(cl.Value)
 			if err != nil {
-				log.WithError(err).Error("failed to unescape cookie")
+				log.ErrorContext(ctx, "failed to unescape cookie", "error", err)
 			}
 		}
 		cluster := getCluster(p.config, cname)
@@ -42,32 +46,32 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 				Path:  "/",
 			})
 		}
-		log = log.WithField("cluster", cluster.Name)
+		log = log.With("cluster", cluster.Name)
 		if err := p.passthroughAuthSession(w, r); err != nil {
-			log.WithError(err).Error("error handling passthrough auth session")
+			log.ErrorContext(ctx, "error handling passthrough auth session", "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		if p.config.PassthroughAuth && (r.URL.Path == "/api2/extjs/access/ticket" || r.URL.Path == "/api2/json/access/ticket") {
-			if err := p.multiAuth(log, w, r); err != nil {
-				log.WithError(err).Error("error handling passthrough auth multiauth")
+			if err := p.multiAuth(ctx, log, w, r); err != nil {
+				log.ErrorContext(ctx, "error handling passthrough auth multiauth", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 			return
 		}
 		host := getHealthyHost(cluster.Hosts)
-		log.WithField("host", host.Name).Debug("accessed backend")
+		log.DebugContext(ctx, "accessed backend", "host", host.Name)
 		if err := p.proxyRequest(cluster.Name, host, w, r); err != nil {
 			if errors.Is(err, context.Canceled) {
-				log.WithError(err).Debug("failed to proxy request")
+				log.DebugContext(ctx, "failed to proxy request", "error", err)
 			} else {
-				log.WithError(err).Error("failed to proxy request")
+				log.ErrorContext(ctx, "failed to proxy request", "error", err)
 			}
 			// prevent writing to hijacked connection
 			if !errors.Is(err, errProxyWs) {
 				if err := p.getClusterFailSite(w); err != nil {
-					log.WithError(err).Error("error writing error to response")
+					log.ErrorContext(ctx, "error writing error to response", "error", err)
 				}
 			}
 		}

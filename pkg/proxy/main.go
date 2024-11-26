@@ -10,16 +10,17 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Marco98/pveportal/pkg/config"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -30,15 +31,22 @@ const (
 
 var errProxyWs = errors.New("error while proxing ws")
 
+var logLevels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
 func Run(www embed.FS) error {
 	cpath := flag.String("c", "pveportal.yaml", "config path")
-	loglevel := flag.String("l", "INFO", "loglevel")
+	logLevel := flag.String("l", "INFO", "loglevel")
 	flag.Parse()
-	llevel, err := logrus.ParseLevel(*loglevel)
-	if err != nil {
-		return err
+	slogLevel, ok := logLevels[strings.ToLower(*logLevel)]
+	if !ok {
+		return fmt.Errorf("invalid loglevel: %s", *logLevel)
 	}
-	logrus.SetLevel(llevel)
+	slog.SetLogLoggerLevel(slogLevel)
 	cfg, err := config.ParseConfigfile(*cpath)
 	if err != nil {
 		return err
@@ -69,6 +77,7 @@ func Run(www embed.FS) error {
 		TLSConfig:    tlscfg,
 		// disable HTTP/2 as not supported by PVE
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+		ErrorLog:     slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 	}
 
 	endsig := make(chan os.Signal, 1)
@@ -81,19 +90,19 @@ func Run(www embed.FS) error {
 			err = srv.ListenAndServe()
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logrus.WithError(err).Error("api cannot listen")
+			slog.Error("api cannot listen", "error", err)
 			endsig <- syscall.SIGTERM
 		}
 	}()
 	cleanctx, cleancancel := context.WithCancel(context.Background())
 	go prx.cleanSessions(cleanctx)
 	if prx.config.CheckInterval >= 0 {
-		logrus.WithField("interval", prx.config.CheckInterval).Debug("healthcheck enabled")
+		slog.Debug("healthcheck enabled", "interval", prx.config.CheckInterval)
 		go prx.hostHealthchecks(cleanctx)
 	}
 	<-endsig
 	cleancancel()
-	logrus.Info("shutting down server")
+	slog.Info("shutting down server")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer func() {
 		cancel()
@@ -171,22 +180,22 @@ func (p *Proxy) getClusterFailSite(wr io.Writer) error {
 func (p *Proxy) hostHealthchecks(ctx context.Context) {
 	for {
 		time.Sleep(time.Duration(p.config.CheckInterval) * time.Second)
-		logrus.Debug("healthcheck interval started")
+		slog.Debug("healthcheck interval started")
 		if ctx.Err() != nil {
 			return
 		}
 		for clx, cl := range p.config.Clusters {
 			for chx, ch := range cl.Hosts {
-				log := logrus.WithFields(logrus.Fields{
-					"cluster": cl.Name,
-					"host":    ch.Name,
-				})
-				log.WithField("addr", ch.Endpoint.Host).Debug("healthcheck dialing")
+				log := slog.With(
+					"cluster", cl.Name,
+					"host", ch.Name,
+				)
+				log.Debug("healthcheck dialing", "addr", ch.Endpoint.Host)
 				c, err := net.Dial("tcp", ch.Endpoint.Host)
 				if err != nil {
 					if ch.Online {
 						p.config.Clusters[clx].Hosts[chx].Online = false
-						log.WithError(err).Warn("host state: UP => DOWN")
+						log.Warn("host state: UP => DOWN", "error", err)
 					}
 					continue
 				}
@@ -197,6 +206,6 @@ func (p *Proxy) hostHealthchecks(ctx context.Context) {
 				}
 			}
 		}
-		logrus.Debug("healthcheck interval ended")
+		slog.Debug("healthcheck interval ended")
 	}
 }

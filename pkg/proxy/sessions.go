@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/Marco98/pveportal/pkg/config"
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 )
 
 type SessionData struct {
@@ -101,11 +101,18 @@ func (p *Proxy) newPassthroughAuthSession(w http.ResponseWriter) error {
 	return nil
 }
 
-func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http.Request) error {
+func (p *Proxy) multiAuth(ctx context.Context, log *slog.Logger, w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
 	isRenew := strings.HasPrefix(r.Form.Get("password"), "PVE:")
+	log = log.With("renew", isRenew)
+	if p.config.PassthroughAuthMaxfail > 0 {
+		log = log.With("errmax", p.config.PassthroughAuthMaxfail)
+	}
+	if len(r.Form.Get("username")) != 0 {
+		log = log.With("username", r.Form.Get("username"))
+	}
 	atLeastOneOK := false
 	var lastresp http.Response
 	var lastrespb []byte
@@ -126,47 +133,47 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		tgturl := *r.URL
 		tgturl.Scheme = host.Endpoint.Scheme
 		tgturl.Host = host.Endpoint.Host
-		log = log.WithFields(logrus.Fields{
-			"host":     tgturl.Host,
-			"cluster":  v.Name,
-			"renew":    isRenew,
-			"errcnt":   errcnt,
-			"errmax":   p.config.PassthroughAuthMaxfail,
-			"username": r.Form.Get("username"),
-		})
+		log := log.With(
+			"tgt_host", tgturl.Host,
+			"tgt_cluster", v.Name,
+		)
+		if p.config.PassthroughAuthMaxfail > 0 {
+			log = log.With("errcnt", errcnt)
+		}
 		if isRenew {
 			sd := p.getSessionData(sid, v.Name)
 			if sd != nil {
 				r.Form.Set("password", sd.Ticket)
 			} else {
-				log.Warn("existing ticket missing for renew")
+				log.WarnContext(ctx, "existing ticket missing for renew")
 			}
 		}
 		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), strings.NewReader(r.Form.Encode()))
 		if err != nil {
-			log.WithError(err).Error("failed multiauth connection prep")
+			log.ErrorContext(ctx, "failed multiauth connection prep", "error", err)
 			errcnt++
 			continue
 		}
 		p.copyHeaders(r.Header, req.Header)
 		resp, err := p.httpClient.Do(req)
 		if err != nil {
-			log.WithError(err).Error("failed multiauth connection open")
+			log.ErrorContext(ctx, "failed multiauth connection open", "error", err)
 			errcnt++
 			continue
 		}
 		defer resp.Body.Close()
 		vb, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.WithError(err).Error("failed multiauth connection read")
+			log.ErrorContext(ctx, "failed multiauth connection read", "error", err)
 			errcnt++
 			continue
 		}
-		if err := p.registerSession(log, sid, v.Name, vb); err != nil {
-			log.WithError(err).Error("failed multiauth response registration")
+		if err := p.registerSession(sid, v.Name, vb); err != nil {
+			log.ErrorContext(ctx, "failed multiauth response registration", "error", err)
 			errcnt++
 			continue
 		}
+		log.InfoContext(ctx, "registered session")
 		lastresp = *resp
 		lastrespb = vb
 		atLeastOneOK = true
@@ -180,7 +187,7 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 	return err
 }
 
-func (p *Proxy) registerSession(log logrus.FieldLogger, sid uuid.UUID, cluster string, resp []byte) error {
+func (p *Proxy) registerSession(sid uuid.UUID, cluster string, resp []byte) error {
 	d := &struct {
 		Success int `json:"success"`
 		Data    struct {
@@ -206,10 +213,6 @@ func (p *Proxy) registerSession(log logrus.FieldLogger, sid uuid.UUID, cluster s
 		Expiration:          time.Now().Add(p.config.SessionTime),
 		Username:            d.Data.Username,
 	}
-	log.WithFields(logrus.Fields{
-		"cluster":  cluster,
-		"username": d.Data.Username,
-	}).Info("registered session")
 	return nil
 }
 
@@ -273,10 +276,12 @@ func (p *Proxy) cleanSessions(ctx context.Context) {
 			for ck, cv := range v {
 				if time.Now().After(cv.Expiration) {
 					delete(v, ck)
-					logrus.WithFields(logrus.Fields{
-						"cluster":  ck,
-						"username": cv.Username,
-					}).Info("session expired")
+					slog.InfoContext(
+						ctx,
+						"session expired",
+						"cluster", ck,
+						"username", cv.Username,
+					)
 				}
 			}
 			if len(p.sessions[k]) == 0 {
