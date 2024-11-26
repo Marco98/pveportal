@@ -48,7 +48,7 @@ func (p *Proxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if p.config.PassthroughAuth && r.URL.Path == "/api2/extjs/access/ticket" {
+		if p.config.PassthroughAuth && (r.URL.Path == "/api2/extjs/access/ticket" || r.URL.Path == "/api2/json/access/ticket") {
 			if err := p.multiAuth(log, w, r); err != nil {
 				log.WithError(err).Error("error handling passthrough auth multiauth")
 				w.WriteHeader(http.StatusInternalServerError)

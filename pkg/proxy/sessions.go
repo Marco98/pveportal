@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,9 +19,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type SessionData struct {
+	Ticket              string
+	CSRFPreventionToken string
+	Username            string
+	Expiration          time.Time
+}
+
 type Proxy struct {
 	config        *config.Config
-	sessions      map[uuid.UUID]map[string]http.Cookie
+	sessions      map[uuid.UUID]map[string]SessionData
 	sessionsLock  *sync.RWMutex
 	httpClient    *http.Client
 	sslKeyLogFile io.WriteCloser
@@ -41,7 +49,7 @@ func NewProxy(config *config.Config) (*Proxy, error) {
 		ForceAttemptHTTP2: false,
 	}
 	p := &Proxy{
-		sessions:     make(map[uuid.UUID]map[string]http.Cookie),
+		sessions:     make(map[uuid.UUID]map[string]SessionData),
 		sessionsLock: &sync.RWMutex{},
 		config:       config,
 		httpClient: &http.Client{
@@ -94,10 +102,10 @@ func (p *Proxy) newPassthroughAuthSession(w http.ResponseWriter) error {
 }
 
 func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http.Request) error {
-	oreq, err := io.ReadAll(r.Body)
-	if err != nil {
+	if err := r.ParseForm(); err != nil {
 		return err
 	}
+	isRenew := strings.HasPrefix(r.Form.Get("password"), "PVE:")
 	atLeastOneOK := false
 	var lastresp http.Response
 	var lastrespb []byte
@@ -119,12 +127,21 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		tgturl.Scheme = host.Endpoint.Scheme
 		tgturl.Host = host.Endpoint.Host
 		log = log.WithFields(logrus.Fields{
-			"tgturl":  tgturl.String(),
+			"host":    tgturl.Host,
 			"cluster": v.Name,
+			"renew":   isRenew,
 			"errcnt":  errcnt,
 			"errmax":  p.config.PassthroughAuthMaxfail,
 		})
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), bytes.NewReader(oreq))
+		if isRenew {
+			sd := p.getSessionData(sid, v.Name)
+			if sd != nil {
+				r.Form.Set("password", sd.Ticket)
+			} else {
+				log.Warn("existing ticket missing for renew")
+			}
+		}
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, tgturl.String(), strings.NewReader(r.Form.Encode()))
 		if err != nil {
 			log.WithError(err).Error("failed multiauth connection prep")
 			errcnt++
@@ -166,32 +183,41 @@ func (p *Proxy) registerSession(log logrus.FieldLogger, sid uuid.UUID, cluster s
 	d := &struct {
 		Success int `json:"success"`
 		Data    struct {
-			Ticket   string `json:"ticket"`
-			Username string `json:"username"`
+			Ticket              string `json:"ticket"`
+			Username            string `json:"username"`
+			CSRFPreventionToken string `json:"CSRFPreventionToken"`
 		} `json:"data"`
 	}{}
 	if err := json.Unmarshal(resp, d); err != nil {
 		return err
 	}
-	if d.Success != 1 {
-		return fmt.Errorf("success != 1 in cluster: %s", cluster)
+	if len(d.Data.Ticket) == 0 {
+		return fmt.Errorf("ticket length is zero: %s", cluster)
 	}
 	p.sessionsLock.Lock()
 	defer p.sessionsLock.Unlock()
 	if _, ok := p.sessions[sid]; !ok {
-		p.sessions[sid] = make(map[string]http.Cookie)
+		p.sessions[sid] = make(map[string]SessionData)
 	}
-	p.sessions[sid][cluster] = http.Cookie{
-		Name:    "PVEAuthCookie",
-		Value:   d.Data.Ticket,
-		Path:    "/",
-		Expires: time.Now().Add(p.config.SessionTime),
+	p.sessions[sid][cluster] = SessionData{
+		Ticket:              d.Data.Ticket,
+		CSRFPreventionToken: d.Data.CSRFPreventionToken,
+		Expiration:          time.Now().Add(p.config.SessionTime),
+		Username:            d.Data.Username,
 	}
 	log.WithFields(logrus.Fields{
 		"cluster":  cluster,
 		"username": d.Data.Username,
 	}).Info("registered session")
 	return nil
+}
+
+func (s *SessionData) createAuthCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:  "PVEAuthCookie",
+		Value: s.Ticket,
+		Path:  "/",
+	}
 }
 
 func (p *Proxy) mangleCookies(cluster string, oreq *http.Request, nreq *http.Request) error {
@@ -214,6 +240,14 @@ func (p *Proxy) mangleCookies(cluster string, oreq *http.Request, nreq *http.Req
 	if err != nil {
 		return err
 	}
+	if c := p.getSessionData(sid, cluster); c != nil {
+		nreq.AddCookie(c.createAuthCookie())
+		nreq.Header.Set("CSRFPreventionToken", c.CSRFPreventionToken)
+	}
+	return nil
+}
+
+func (p *Proxy) getSessionData(sid uuid.UUID, cluster string) *SessionData {
 	p.sessionsLock.RLock()
 	defer p.sessionsLock.RUnlock()
 	cc, ok := p.sessions[sid]
@@ -224,8 +258,7 @@ func (p *Proxy) mangleCookies(cluster string, oreq *http.Request, nreq *http.Req
 	if !ok {
 		return nil
 	}
-	nreq.AddCookie(&c)
-	return nil
+	return &c
 }
 
 func (p *Proxy) cleanSessions(ctx context.Context) {
@@ -237,8 +270,12 @@ func (p *Proxy) cleanSessions(ctx context.Context) {
 		p.sessionsLock.Lock()
 		for k, v := range p.sessions {
 			for ck, cv := range v {
-				if time.Now().After(cv.Expires) {
+				if time.Now().After(cv.Expiration) {
 					delete(v, ck)
+					logrus.WithFields(logrus.Fields{
+						"cluster":  ck,
+						"username": cv.Username,
+					}).Info("session expired")
 				}
 			}
 			if len(p.sessions[k]) == 0 {
