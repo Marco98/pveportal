@@ -7,9 +7,10 @@ tls_ignore_cert: true
 # hooks
 hide_repowarn: true
 passthroughauth: true
+passthroughauth_maxfail: 0
 
 # connectivity
-check_interval: 5
+check_interval: 60
 username: dummy
 password: dummy
 
