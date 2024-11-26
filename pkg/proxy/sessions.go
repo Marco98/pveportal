@@ -127,11 +127,12 @@ func (p *Proxy) multiAuth(log logrus.FieldLogger, w http.ResponseWriter, r *http
 		tgturl.Scheme = host.Endpoint.Scheme
 		tgturl.Host = host.Endpoint.Host
 		log = log.WithFields(logrus.Fields{
-			"host":    tgturl.Host,
-			"cluster": v.Name,
-			"renew":   isRenew,
-			"errcnt":  errcnt,
-			"errmax":  p.config.PassthroughAuthMaxfail,
+			"host":     tgturl.Host,
+			"cluster":  v.Name,
+			"renew":    isRenew,
+			"errcnt":   errcnt,
+			"errmax":   p.config.PassthroughAuthMaxfail,
+			"username": r.Form.Get("username"),
 		})
 		if isRenew {
 			sd := p.getSessionData(sid, v.Name)
