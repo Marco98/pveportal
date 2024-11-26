@@ -21,7 +21,7 @@ func main() {
 		"version": version,
 		"commit":  commit,
 		"date":    date,
-	}).Info("starting pveproxy")
+	}).Info("starting pveportal")
 	if err := proxy.Run(www); err != nil {
 		logrus.WithError(err).Fatal("fatal exception")
 	}
