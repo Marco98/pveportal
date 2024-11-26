@@ -11,8 +11,8 @@
 - [x] hide nag-popup (please [purchase a licence](https://www.proxmox.com/en/proxmox-virtual-environment/pricing) for production)
 - [x] switch clusters in GUI
 - [x] pass-through authentication
-- [ ] host health checks
-- [ ] see resources cross-cluster
+- [x] host health checks
+- [ ] <del>see resources cross-cluster</del> (moved to pveportal-standalone)
 
 ## Installation
 
