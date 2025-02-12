@@ -238,3 +238,21 @@ func replicateWebsocketConn(dst, src *websocket.Conn, errc chan error) {
 		}
 	}
 }
+
+func (p *Proxy) applyHsts(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p.config.HstsEnabled {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func (p *Proxy) applyHstsFunc(f func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if p.config.HstsEnabled {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		f(w, r)
+	}
+}

@@ -84,6 +84,7 @@ func parseConfig(yaml *YamlConfig) (*Config, error) {
 		TLSIgnoreCert:          defaultbool(yaml.TLSIgnoreCert, false),
 		ServerTimeoutWrite:     defaultint(yaml.ServerTimeoutWrite, 600),
 		ServerTimeoutRead:      defaultint(yaml.ServerTimeoutRead, 600),
+		HstsEnabled:            yaml.HstsEnabled,
 	}, nil
 }
 

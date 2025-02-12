@@ -66,10 +66,10 @@ func Run(www embed.FS) error {
 		return err
 	}
 	fs := http.FileServer(http.FS(htmlContent))
-	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), listClusters(cfg.Clusters))
-	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), switchCluster())
-	http.Handle(localHTTPDir, http.StripPrefix(localHTTPDir, fs))
-	http.HandleFunc("/", prx.proxyHandler())
+	http.HandleFunc(fmt.Sprintf("%sapi/clusters", localHTTPDir), prx.applyHstsFunc(listClusters(cfg.Clusters)))
+	http.HandleFunc(fmt.Sprintf("%sapi/switchcluster", localHTTPDir), prx.applyHstsFunc(switchCluster()))
+	http.Handle(localHTTPDir, prx.applyHsts(http.StripPrefix(localHTTPDir, fs)))
+	http.HandleFunc("/", prx.applyHstsFunc(prx.proxyHandler()))
 	srv := &http.Server{
 		ReadTimeout:  time.Duration(cfg.ServerTimeoutRead) * time.Second,
 		WriteTimeout: time.Duration(cfg.ServerTimeoutWrite) * time.Second,

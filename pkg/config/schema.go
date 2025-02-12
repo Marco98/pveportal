@@ -18,6 +18,7 @@ type YamlConfig struct {
 	PassthroughAuth        *bool         `yaml:"passthroughauth"`
 	PassthroughAuthMaxfail *int          `yaml:"passthroughauth_maxfail"`
 	SessionTime            string        `yaml:"sessiontime"`
+	HstsEnabled            bool          `yaml:"hsts"`
 	// inheritable
 	HideRepowarn *bool  `yaml:"hide_repowarn"`
 	Username     string `yaml:"username"`
@@ -56,6 +57,7 @@ type Config struct {
 	Clusters               []Cluster
 	ServerTimeoutWrite     int
 	ServerTimeoutRead      int
+	HstsEnabled            bool
 }
 
 type Cluster struct {
